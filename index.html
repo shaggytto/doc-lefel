@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#232d6e">
+<title>Atestado de Transporte</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="top">
+  <img id="logo" alt="" width="30" height="32">
+  <div>
+    <h1>Atestado de Transporte</h1>
+    <p>Gerador de ficha mensal em PDF</p>
+  </div>
+</header>
+
+<main>
+  <!-- ================= FICHA ================= -->
+  <section id="view-ficha" class="view active">
+
+    <div class="card">
+      <h2>Aluno</h2>
+      <button type="button" id="pickStudent" class="picker">
+        <span id="pickerText" class="placeholder">Toque para escolher um aluno salvo</span>
+        <span class="chev" aria-hidden="true">▾</span>
+      </button>
+      <button type="button" id="clearStudent" class="link" hidden>Limpar e começar um novo aluno</button>
+    </div>
+
+    <div class="card">
+      <h2>Dados do aluno</h2>
+      <label for="nome">Nome do aluno</label>
+      <input id="nome" type="text" autocomplete="off" autocapitalize="words">
+
+      <label for="endAluno">Endereço do aluno</label>
+      <textarea id="endAluno" rows="2" autocapitalize="sentences"></textarea>
+
+      <label for="unidade">Unidade escolar</label>
+      <select id="unidade"></select>
+      <div id="endUnidade" class="readonly"></div>
+
+      <label id="lblPeriodo">Período</label>
+      <div class="seg" role="radiogroup" aria-labelledby="lblPeriodo">
+        <label class="opt"><input type="radio" name="periodo" value="manha"><span><b>Manhã</b><small>8:00 – 12:00</small></span></label>
+        <label class="opt"><input type="radio" name="periodo" value="tarde"><span><b>Tarde</b><small>13:00 – 17:00</small></span></label>
+        <label class="opt"><input type="radio" name="periodo" value="integral"><span><b>Integral</b><small>08:00 – 17:00</small></span></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Mês de referência</h2>
+      <p class="hint">Mês em que o transporte foi prestado.</p>
+      <div class="row">
+        <div class="grow2"><label for="mesRef">Mês</label><select id="mesRef"></select></div>
+        <div class="grow1"><label for="anoRef">Ano</label><input id="anoRef" type="number" inputmode="numeric" min="2000" max="2100"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Data da assinatura</h2>
+      <p class="hint">Aparece no fim da página: “Campinas, dia de mês de ano”.</p>
+      <div class="row">
+        <div class="grow1"><label for="diaAss">Dia</label><input id="diaAss" type="number" inputmode="numeric" min="1" max="31"></div>
+        <div class="grow2"><label for="mesAss">Mês</label><select id="mesAss"></select></div>
+        <div class="grow1"><label for="anoAss">Ano</label><input id="anoAss" type="number" inputmode="numeric" min="2000" max="2100"></div>
+      </div>
+    </div>
+
+    <label class="check"><input type="checkbox" id="salvar" checked> <span>Salvar / atualizar este aluno no cadastro</span></label>
+
+    <div class="spacer"></div>
+    <div class="actionbar"><button type="button" id="gerar" class="primary big">Gerar PDF</button></div>
+  </section>
+
+  <!-- ================= ALUNOS ================= -->
+  <section id="view-alunos" class="view">
+    <div class="card">
+      <input id="buscaAlunos" type="search" placeholder="Buscar aluno…" autocomplete="off">
+    </div>
+    <div id="listaAlunos" class="list"></div>
+    <div class="spacer"></div>
+    <div class="actionbar"><button type="button" id="novoAluno" class="primary big">+ Novo aluno</button></div>
+  </section>
+
+  <!-- ================= AJUSTES ================= -->
+  <section id="view-ajustes" class="view">
+    <div class="card">
+      <h2>Unidades escolares</h2>
+      <p class="hint">Na ficha, o nome sai como “Tiquira Centro de Desenvolvimento Humano LTDA - Unidade N”, com o endereço correspondente.</p>
+      <div id="listaUnidades" class="list inner"></div>
+    </div>
+
+    <div class="card">
+      <h2>Backup e compartilhamento</h2>
+      <p class="hint">Os dados ficam salvos só neste aparelho. Para levar a lista de alunos para outro celular (ou guardar uma cópia), exporte e depois importe no outro aparelho.</p>
+      <button type="button" id="exportar" class="secondary">Exportar dados</button>
+      <button type="button" id="importar" class="secondary">Importar dados</button>
+      <input type="file" id="arquivoImport" accept=".json,application/json" hidden>
+    </div>
+
+    <p class="foot">Registro de Ocorrências e assinatura saem em branco no PDF, para preencher à mão.</p>
+  </section>
+</main>
+
+<nav class="tabs" aria-label="Navegação">
+  <button type="button" data-tab="ficha" class="on"><i>📄</i>Ficha</button>
+  <button type="button" data-tab="alunos"><i>👥</i>Alunos</button>
+  <button type="button" data-tab="ajustes"><i>⚙️</i>Ajustes</button>
+</nav>
+
+<!-- ============ Janelas (sheets) ============ -->
+<div id="backdrop" class="backdrop" hidden></div>
+
+<div id="sheetPick" class="sheet" hidden role="dialog" aria-label="Escolher aluno">
+  <div class="sheet-head"><h3>Escolher aluno</h3><button type="button" class="x" data-close>✕</button></div>
+  <input id="buscaPick" type="search" placeholder="Buscar pelo nome…" autocomplete="off">
+  <div id="listaPick" class="list inner"></div>
+  <button type="button" id="pickNovo" class="secondary">+ Cadastrar novo aluno</button>
+</div>
+
+<div id="sheetAluno" class="sheet" hidden role="dialog" aria-label="Aluno">
+  <div class="sheet-head"><h3 id="tituloAluno">Aluno</h3><button type="button" class="x" data-close>✕</button></div>
+  <label for="eNome">Nome do aluno</label>
+  <input id="eNome" type="text" autocomplete="off" autocapitalize="words">
+  <label for="eEnd">Endereço do aluno</label>
+  <textarea id="eEnd" rows="2"></textarea>
+  <label for="eUnidade">Unidade escolar</label>
+  <select id="eUnidade"></select>
+  <label>Período</label>
+  <div class="seg">
+    <label class="opt"><input type="radio" name="ePeriodo" value="manha"><span><b>Manhã</b><small>8:00 – 12:00</small></span></label>
+    <label class="opt"><input type="radio" name="ePeriodo" value="tarde"><span><b>Tarde</b><small>13:00 – 17:00</small></span></label>
+    <label class="opt"><input type="radio" name="ePeriodo" value="integral"><span><b>Integral</b><small>08:00 – 17:00</small></span></label>
+  </div>
+  <div class="btns">
+    <button type="button" id="excluirAluno" class="danger">Excluir</button>
+    <button type="button" id="salvarAluno" class="primary">Salvar</button>
+  </div>
+</div>
+
+<div id="sheetPdf" class="sheet" hidden role="dialog" aria-label="PDF pronto">
+  <div class="sheet-head"><h3>✅ PDF pronto</h3><button type="button" class="x" data-close>✕</button></div>
+  <p id="pdfNome" class="filename"></p>
+  <button type="button" id="compartilhar" class="primary big">Compartilhar (WhatsApp, e-mail…)</button>
+  <button type="button" id="baixar" class="secondary big">Baixar PDF</button>
+  <p class="hint">Ao baixar, o arquivo fica na pasta Downloads do celular.</p>
+</div>
+
+<div id="toast" class="toast" hidden role="status"></div>
+
+<script src="fontdata.js"></script>
+<script src="pdf.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
