@@ -1,5 +1,5 @@
-/* Cache simples para o app funcionar sem internet depois da primeira visita. */
-var CACHE = 'ficha-transporte-v2';
+/* Funciona sem internet, mas sempre busca a versão mais nova quando há conexão. */
+var CACHE = 'ficha-transporte-v3';
 var FILES = ['./', 'index.html', 'style.css', 'app.js', 'pdf.js', 'fontdata.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(FILES); }).then(function () { return self.skipWaiting(); }));
@@ -11,9 +11,11 @@ self.addEventListener('activate', function (e) {
 });
 self.addEventListener('fetch', function (e) {
   if (e.request.method !== 'GET') return;
-  e.respondWith(caches.match(e.request).then(function (hit) {
-    return hit || fetch(e.request).then(function (res) {
-      var copy = res.clone(); caches.open(CACHE).then(function (c) { c.put(e.request, copy); }); return res;
-    });
-  }));
+  e.respondWith(
+    fetch(e.request, { cache: 'no-cache' }).then(function (res) {
+      var copy = res.clone();
+      caches.open(CACHE).then(function (c) { c.put(e.request, copy); });
+      return res;
+    }).catch(function () { return caches.match(e.request); })
+  );
 });
