@@ -82,10 +82,15 @@
   <section id="view-alunos" class="view">
     <div class="card">
       <input id="buscaAlunos" type="search" placeholder="Buscar aluno…" autocomplete="off">
+      <div class="selbar">
+        <button type="button" id="modoSel" class="link">Selecionar vários</button>
+        <label class="check" id="selAllWrap" hidden><input type="checkbox" id="selTodos"> <span>Selecionar todos</span></label>
+      </div>
+      <p id="selCount" class="hint" hidden></p>
     </div>
     <div id="listaAlunos" class="list"></div>
     <div class="spacer"></div>
-    <div class="actionbar"><button type="button" id="novoAluno" class="primary big">+ Novo aluno</button></div>
+    <div class="actionbar"><button type="button" id="novoAluno" class="primary big">+ Novo aluno</button><button type="button" id="gerarLote" class="primary big" hidden disabled>Gerar fichas</button></div>
   </section>
 
   <!-- ================= AJUSTES ================= -->
@@ -144,11 +149,30 @@
   </div>
 </div>
 
+<div id="sheetLote" class="sheet" hidden role="dialog" aria-label="Gerar várias fichas">
+  <div class="sheet-head"><h3>Gerar várias fichas</h3><button type="button" class="x" data-close>✕</button></div>
+  <p id="loteResumo" class="hint"></p>
+  <div id="loteAviso" class="aviso" hidden></div>
+  <label>Mês de referência</label>
+  <div class="row">
+    <div class="grow2"><select id="lMesRef" aria-label="Mês de referência"></select></div>
+    <div class="grow1"><input id="lAnoRef" type="number" inputmode="numeric" min="2000" max="2100" aria-label="Ano de referência"></div>
+  </div>
+  <label>Data da assinatura</label>
+  <div class="row">
+    <div class="grow1"><input id="lDia" type="number" inputmode="numeric" min="1" max="31" aria-label="Dia"></div>
+    <div class="grow2"><select id="lMesAss" aria-label="Mês da assinatura"></select></div>
+    <div class="grow1"><input id="lAnoAss" type="number" inputmode="numeric" min="2000" max="2100" aria-label="Ano da assinatura"></div>
+  </div>
+  <div class="btns"><button type="button" id="loteGerar" class="primary">Gerar PDF</button></div>
+</div>
+
 <div id="sheetPdf" class="sheet" hidden role="dialog" aria-label="PDF pronto">
   <div class="sheet-head"><h3>✅ PDF pronto</h3><button type="button" class="x" data-close>✕</button></div>
   <p id="pdfNome" class="filename"></p>
   <button type="button" id="compartilhar" class="primary big">Compartilhar (WhatsApp, e-mail…)</button>
   <button type="button" id="baixar" class="secondary big">Baixar PDF</button>
+  <button type="button" id="baixarZip" class="secondary big" hidden>Baixar ZIP (um PDF por aluno)</button>
   <p class="hint">Ao baixar, o arquivo fica na pasta Downloads do celular.</p>
 </div>
 

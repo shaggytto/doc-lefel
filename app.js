@@ -16,7 +16,8 @@
   var LEGACY_UNIT = { u1: '5' };   // versão anterior do app: "Unidade V" = 5
   var db = load();
   var cur = { studentId: null };
-  var currentFile = null;
+  var currentFile = null, currentZip = null;
+  var selMode = false, sel = {};
 
   function fixUnit(id) { id = LEGACY_UNIT[id] || id; return unitById(id) ? id : ''; }
   function load() {
@@ -60,7 +61,7 @@
   }
   function closeSheets() {
     $('backdrop').hidden = true;
-    ['sheetPick', 'sheetAluno', 'sheetPdf'].forEach(function (i) { $(i).hidden = true; });
+    ['sheetPick', 'sheetAluno', 'sheetLote', 'sheetPdf'].forEach(function (i) { $(i).hidden = true; });
   }
   function showTab(name) {
     ['ficha', 'alunos', 'ajustes'].forEach(function (t) {
@@ -157,6 +158,7 @@
 
     var filename = ('Atestado - ' + nome + ' - ' + MESES[mR] + ' ' + aR + '.pdf').replace(/[\\\/:*?"<>|]+/g, '');
     currentFile = new File([bytes], filename, { type: 'application/pdf' });
+    currentZip = null; $('baixarZip').hidden = true;
     $('pdfNome').textContent = filename;
     $('compartilhar').hidden = !canShareFile(currentFile);
     openSheet('sheetPdf');
@@ -216,9 +218,92 @@
     }
     list.forEach(function (s) { container.appendChild(studentItem(s, withGo, function () { onPick(s); })); });
   }
-  function renderAlunos() {
-    renderList($('listaAlunos'), $('buscaAlunos').value, true, function (s) { editAluno(s.id); });
+  function filtrados(q) {
+    var qq = norm(q || '');
+    return db.students.filter(function (s) { return !qq || norm(s.nome).indexOf(qq) >= 0; }).sort(byName);
   }
+  function renderAlunos() {
+    if (!selMode) {
+      renderList($('listaAlunos'), $('buscaAlunos').value, true, function (s) { editAluno(s.id); });
+      return;
+    }
+    var c = $('listaAlunos'), list = filtrados($('buscaAlunos').value);
+    c.innerHTML = '';
+    if (!list.length) c.appendChild(el('div', 'empty', db.students.length ? 'Nenhum aluno encontrado.' : 'Nenhum aluno cadastrado ainda.'));
+    list.forEach(function (s) {
+      var it = el('label', 'item'), cb = el('input'); cb.type = 'checkbox'; cb.checked = !!sel[s.id];
+      cb.onchange = function () { if (cb.checked) sel[s.id] = 1; else delete sel[s.id]; updateSelUI(); };
+      var tx = el('div', 'tx');
+      tx.appendChild(el('div', 'n', s.nome));
+      tx.appendChild(el('div', 's', (PERIODOS[s.periodo] ? PERIODOS[s.periodo].rotulo : 'sem período') + ' · ' + unitName(s.unidadeId)));
+      it.appendChild(cb); it.appendChild(tx); c.appendChild(it);
+    });
+    updateSelUI();
+  }
+  function selCount() { return Object.keys(sel).filter(function (id) { return studentById(id); }).length; }
+  function updateSelUI() {
+    var n = selCount(), list = filtrados($('buscaAlunos').value);
+    $('selCount').textContent = n + ' aluno(s) selecionado(s)';
+    $('selTodos').checked = list.length > 0 && list.every(function (s) { return sel[s.id]; });
+    $('gerarLote').textContent = n ? 'Gerar ' + n + ' ficha' + (n === 1 ? '' : 's') : 'Gerar fichas';
+    $('gerarLote').disabled = !n;
+  }
+  function setSelMode(on) {
+    selMode = on; sel = {};
+    $('modoSel').textContent = on ? 'Cancelar seleção' : 'Selecionar vários';
+    $('selAllWrap').hidden = !on; $('selCount').hidden = !on;
+    $('novoAluno').hidden = on; $('gerarLote').hidden = !on;
+    renderAlunos();
+  }
+  function lerDatas(ids) {
+    var aR = parseInt($(ids[1]).value, 10), mR = parseInt($(ids[0]).value, 10);
+    var dia = parseInt($(ids[2]).value, 10), mA = parseInt($(ids[3]).value, 10), aA = parseInt($(ids[4]).value, 10);
+    if (!(aR >= 2000 && aR <= 2100)) { toast('Confira o ano de referência.'); return null; }
+    if (!(aA >= 2000 && aA <= 2100)) { toast('Confira o ano da assinatura.'); return null; }
+    if (!(dia >= 1 && dia <= new Date(aA, mA + 1, 0).getDate())) { toast('Confira o dia da assinatura.'); return null; }
+    return { mesRef: MESES[mR], anoRef: String(aR), diaAss: String(dia), mesAss: MESES[mA], anoAss: String(aA) };
+  }
+  var loteValidos = [];
+  function abrirLote() {
+    var chosen = db.students.filter(function (s) { return sel[s.id]; }).sort(byName);
+    loteValidos = chosen.filter(function (s) { return PERIODOS[s.periodo] && unitById(s.unidadeId) && s.endereco; });
+    var ruins = chosen.filter(function (s) { return loteValidos.indexOf(s) < 0; });
+    $('loteResumo').textContent = loteValidos.length + ' ficha(s) serão geradas.';
+    var av = $('loteAviso');
+    if (ruins.length) {
+      av.textContent = 'Faltam dados (período, unidade ou endereço) e estes alunos ficarão de fora: ' +
+        ruins.map(function (s) { return s.nome; }).join('; ') + '. Complete o cadastro na lista de alunos.';
+      av.hidden = false;
+    } else av.hidden = true;
+    $('lMesRef').value = $('mesRef').value; $('lAnoRef').value = $('anoRef').value;
+    $('lDia').value = $('diaAss').value; $('lMesAss').value = $('mesAss').value; $('lAnoAss').value = $('anoAss').value;
+    $('loteGerar').disabled = !loteValidos.length;
+    openSheet('sheetLote');
+  }
+  function gerarLote() {
+    var dt = lerDatas(['lMesRef', 'lAnoRef', 'lDia', 'lMesAss', 'lAnoAss']);
+    if (!dt || !loteValidos.length) return;
+    var lista = loteValidos.map(function (s) {
+      var u = unitById(s.unidadeId);
+      return { aluno: s.nome, endAluno: s.endereco, unidade: u.nome, endUnidade: u.endereco, periodo: s.periodo,
+        mesRef: dt.mesRef, anoRef: dt.anoRef, diaAss: dt.diaAss, mesAss: dt.mesAss, anoAss: dt.anoAss };
+    });
+    var pdf, zipBlob;
+    try {
+      pdf = FichaPDF.gerarVarias(lista);
+      zipBlob = FichaPDF.zip(lista.map(function (d) {
+        return { name: ('Atestado - ' + d.aluno + ' - ' + d.mesRef + ' ' + d.anoRef + '.pdf').replace(/[\\\/:*?"<>|]+/g, ''), bytes: FichaPDF.gerar(d) };
+      }));
+    } catch (e) { return toast('Não consegui gerar as fichas: ' + e.message); }
+    var base = 'Atestados - ' + dt.mesRef + ' ' + dt.anoRef + ' (' + lista.length + ' ficha' + (lista.length === 1 ? '' : 's') + ')';
+    currentFile = new File([pdf], base + '.pdf', { type: 'application/pdf' });
+    currentZip = new File([zipBlob], base + '.zip', { type: 'application/zip' });
+    $('pdfNome').textContent = base + '.pdf (uma ficha por página)';
+    $('compartilhar').hidden = !canShareFile(currentFile);
+    $('baixarZip').hidden = false;
+    openSheet('sheetPdf');
+  }
+
   function renderPick() {
     renderList($('listaPick'), $('buscaPick').value, false, function (s) { selectStudent(s.id); });
   }
@@ -289,8 +374,8 @@
           if (!s || !s.nome) return;
           var un = fixUnit(s.unidadeId || '');
           var ex = studentById(s.id) || db.students.filter(function (x) { return norm(x.nome) === norm(s.nome); })[0];
-          if (!ex) { db.students.push({ id: s.id || uid(), nome: clean(s.nome), endereco: String(s.endereco || ''), unidadeId: un, periodo: s.periodo || 'manha', updated: s.updated || 0 }); ns++; }
-          else if ((s.updated || 0) > (ex.updated || 0)) { ex.nome = clean(s.nome); ex.endereco = String(s.endereco || ''); ex.unidadeId = un; ex.periodo = s.periodo || ex.periodo; ex.updated = s.updated; ns++; }
+          if (!ex) { db.students.push({ id: s.id || uid(), nome: clean(s.nome), endereco: String(s.endereco || ''), unidadeId: un, periodo: PERIODOS[s.periodo] ? s.periodo : '', updated: s.updated || 0 }); ns++; }
+          else if ((s.updated || 0) > (ex.updated || 0)) { ex.nome = clean(s.nome); ex.endereco = String(s.endereco || ''); ex.unidadeId = un; ex.periodo = PERIODOS[s.periodo] ? s.periodo : ex.periodo; ex.updated = s.updated; ns++; }
         });
         save(); renderUnidades(); refreshUnitSelects(); updatePicker();
         toast('Importado: ' + ns + ' aluno(s) novo(s) ou atualizado(s).');
@@ -320,6 +405,16 @@
     $('gerar').onclick = gerar;
 
     $('buscaAlunos').oninput = renderAlunos;
+    fillMonths($('lMesRef')); fillMonths($('lMesAss'));
+    $('modoSel').onclick = function () { setSelMode(!selMode); };
+    $('selTodos').onchange = function () {
+      var on = this.checked;
+      filtrados($('buscaAlunos').value).forEach(function (s) { if (on) sel[s.id] = 1; else delete sel[s.id]; });
+      renderAlunos();
+    };
+    $('gerarLote').onclick = abrirLote;
+    $('loteGerar').onclick = gerarLote;
+    $('baixarZip').onclick = function () { if (currentZip) { downloadFile(currentZip); toast('ZIP baixado.'); } };
     $('novoAluno').onclick = function () { editAluno(null); };
     $('salvarAluno').onclick = salvarAluno;
     $('excluirAluno').onclick = excluirAluno;

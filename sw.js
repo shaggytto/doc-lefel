@@ -1,5 +1,5 @@
 /* Funciona sem internet, mas sempre busca a versão mais nova quando há conexão. */
-var CACHE = 'ficha-transporte-v3';
+var CACHE = 'ficha-transporte-v4';
 var FILES = ['./', 'index.html', 'style.css', 'app.js', 'pdf.js', 'fontdata.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(FILES); }).then(function () { return self.skipWaiting(); }));

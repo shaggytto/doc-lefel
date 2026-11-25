@@ -228,8 +228,8 @@
   function b64(s) { var bin = atob(s), a = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return a; }
   function hexUtf16(s) { var h = 'FEFF'; for (var i = 0; i < s.length; i++) h += ('000' + s.charCodeAt(i).toString(16)).slice(-4); return '<' + h + '>'; }
 
-  function build(contentStr, title) {
-    var parts = [], offs = [0], pos = 0;
+  function build(contents, title) {
+    var parts = [], offs = [0], pos = 0, N = contents.length;
     function push(b) { parts.push(b); pos += b.length; }
     function obj(num, dict, stream) {
       offs[num] = pos;
@@ -238,23 +238,27 @@
       push(ascii('endobj\n'));
     }
     push(new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x34, 0x0A, 0x25, 0xE2, 0xE3, 0xCF, 0xD3, 0x0A]));
-    var content = ascii(contentStr);
+    var kids = [];
+    for (var i = 0; i < N; i++) kids.push((11 + 2 * i) + ' 0 R');
     obj(1, '<< /Type /Catalog /Pages 2 0 R >>');
-    obj(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
-    obj(3, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + n(PW) + ' ' + n(PH) + '] /Resources << /Font << /F1 5 0 R /F2 8 0 R >> /XObject << /Im1 11 0 R >> /ProcSet [/PDF /Text /ImageC] >> /Contents 4 0 R >>');
-    obj(4, '<< /Length ' + content.length + ' >>', content);
-    [['regular', 5], ['bold', 8]].forEach(function (p) {
+    obj(2, '<< /Type /Pages /Kids [' + kids.join(' ') + '] /Count ' + N + ' >>');
+    [['regular', 3], ['bold', 6]].forEach(function (p) {
       var f = A.fonts[p[0]], num = p[1], ttf = b64(f.ttf);
       obj(num, '<< /Type /Font /Subtype /TrueType /BaseFont /' + f.name + ' /FirstChar 32 /LastChar 255 /Widths [' + f.widths.join(' ') + '] /FontDescriptor ' + (num + 1) + ' 0 R /Encoding /WinAnsiEncoding >>');
       obj(num + 1, '<< /Type /FontDescriptor /FontName /' + f.name + ' /Flags 32 /FontBBox [' + f.bbox.join(' ') + '] /ItalicAngle 0 /Ascent ' + f.ascent + ' /Descent ' + f.descent + ' /CapHeight ' + f.capHeight + ' /StemV ' + (p[0] === 'bold' ? 140 : 80) + ' /FontFile2 ' + (num + 2) + ' 0 R >>');
       obj(num + 2, '<< /Length ' + ttf.length + ' /Length1 ' + ttf.length + ' >>', ttf);
     });
     var jpg = b64(A.logo);
-    obj(11, '<< /Type /XObject /Subtype /Image /Width ' + A.logoW + ' /Height ' + A.logoH + ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + jpg.length + ' >>', jpg);
-    obj(12, '<< /Title ' + hexUtf16(title) + ' /Producer (Ficha de Transporte) >>');
-    var xref = pos, x = 'xref\n0 13\n0000000000 65535 f \n';
-    for (var i = 1; i <= 12; i++) x += ('0000000000' + offs[i]).slice(-10) + ' 00000 n \n';
-    x += 'trailer\n<< /Size 13 /Root 1 0 R /Info 12 0 R >>\nstartxref\n' + xref + '\n%%EOF\n';
+    obj(9, '<< /Type /XObject /Subtype /Image /Width ' + A.logoW + ' /Height ' + A.logoH + ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + jpg.length + ' >>', jpg);
+    obj(10, '<< /Title ' + hexUtf16(title) + ' /Producer (Ficha de Transporte) >>');
+    contents.forEach(function (c, i) {
+      var pn = 11 + 2 * i, cn = pn + 1, content = ascii(c);
+      obj(pn, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + n(PW) + ' ' + n(PH) + '] /Resources << /Font << /F1 3 0 R /F2 6 0 R >> /XObject << /Im1 9 0 R >> /ProcSet [/PDF /Text /ImageC] >> /Contents ' + cn + ' 0 R >>');
+      obj(cn, '<< /Length ' + content.length + ' >>', content);
+    });
+    var total = 10 + 2 * N, xref = pos, x = 'xref\n0 ' + (total + 1) + '\n0000000000 65535 f \n';
+    for (var k = 1; k <= total; k++) x += ('0000000000' + offs[k]).slice(-10) + ' 00000 n \n';
+    x += 'trailer\n<< /Size ' + (total + 1) + ' /Root 1 0 R /Info 10 0 R >>\nstartxref\n' + xref + '\n%%EOF\n';
     push(ascii(x));
     var out = new Uint8Array(pos), o = 0;
     parts.forEach(function (p) { out.set(p, o); o += p.length; });
@@ -263,8 +267,49 @@
 
   function gerar(d) {
     var titulo = 'Atestado de transporte escolar - ' + d.aluno + ' - ' + d.mesRef + ' ' + d.anoRef;
-    return build(compose(d), titulo);
+    return build([compose(d)], titulo);
+  }
+  /* várias fichas num único PDF (uma por página) */
+  function gerarVarias(lista) {
+    var d0 = lista[0];
+    return build(lista.map(compose), 'Atestados de transporte escolar - ' + d0.mesRef + ' ' + d0.anoRef + ' (' + lista.length + ' fichas)');
   }
 
-  window.FichaPDF = { gerar: gerar, MESES: MESES, PERIODOS: PERIODOS };
+  /* ---------- ZIP (sem compressão) ---------- */
+  var CRC = null;
+  function crc32(b) {
+    if (!CRC) {
+      CRC = new Uint32Array(256);
+      for (var i = 0; i < 256; i++) { var c = i; for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); CRC[i] = c >>> 0; }
+    }
+    var c2 = 0xFFFFFFFF;
+    for (var j = 0; j < b.length; j++) c2 = CRC[(c2 ^ b[j]) & 255] ^ (c2 >>> 8);
+    return (c2 ^ 0xFFFFFFFF) >>> 0;
+  }
+  function zip(files) {
+    var enc = new TextEncoder(), parts = [], central = [], off = 0, t = new Date();
+    var dt = (t.getHours() << 11) | (t.getMinutes() << 5) | (t.getSeconds() >> 1);
+    var dd = ((t.getFullYear() - 1980) << 9) | ((t.getMonth() + 1) << 5) | t.getDate();
+    files.forEach(function (f) {
+      var name = enc.encode(f.name), crc = crc32(f.bytes), sz = f.bytes.length;
+      var lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+      lh.setUint16(10, dt, true); lh.setUint16(12, dd, true); lh.setUint32(14, crc, true);
+      lh.setUint32(18, sz, true); lh.setUint32(22, sz, true); lh.setUint16(26, name.length, true);
+      parts.push(new Uint8Array(lh.buffer), name, f.bytes);
+      var ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+      ch.setUint16(12, dt, true); ch.setUint16(14, dd, true); ch.setUint32(16, crc, true);
+      ch.setUint32(20, sz, true); ch.setUint32(24, sz, true); ch.setUint16(28, name.length, true); ch.setUint32(42, off, true);
+      central.push(new Uint8Array(ch.buffer), name);
+      off += 30 + name.length + sz;
+    });
+    var csize = 0; central.forEach(function (c) { csize += c.length; });
+    var end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+    end.setUint32(12, csize, true); end.setUint32(16, off, true);
+    return new Blob(parts.concat(central, [new Uint8Array(end.buffer)]), { type: 'application/zip' });
+  }
+
+  window.FichaPDF = { gerar: gerar, gerarVarias: gerarVarias, zip: zip, MESES: MESES, PERIODOS: PERIODOS };
 })();
