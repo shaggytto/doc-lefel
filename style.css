@@ -69,7 +69,7 @@ button.big{width:100%;min-height:56px;font-size:17px}
 button:active{transform:scale(.985)}
 button:disabled{opacity:.5}
 
-.spacer{height:84px}
+.spacer{height:calc(96px + env(safe-area-inset-bottom))}
 .actionbar{position:fixed;left:0;right:0;bottom:calc(var(--tabs) + env(safe-area-inset-bottom));
   padding:10px 16px;background:linear-gradient(to top,var(--bg) 70%,transparent);z-index:4}
 .actionbar button{max-width:608px;display:block;margin:0 auto}
@@ -116,3 +116,5 @@ label.item{cursor:pointer}
 .item input[type=checkbox]{width:24px;height:24px;flex:none;accent-color:var(--navy)}
 .aviso{margin:8px 0;padding:10px 12px;border-radius:10px;background:#fff4dc;color:#6b4a00;font-size:14px;border:1px solid #f0d28a}
 @media (prefers-color-scheme:dark){.aviso{background:#3a2f12;color:#f3d795;border-color:#6d5719}}
+
+[hidden]{display:none !important}
