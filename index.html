@@ -102,6 +102,18 @@
     </div>
 
     <div class="card">
+      <h2>Sincronização entre aparelhos</h2>
+      <p class="hint">Mantém a lista de alunos igual nos celulares usando uma planilha do Google Drive. Funciona sem internet e sincroniza quando voltar.</p>
+      <label for="syncUrl">Endereço da planilha (link do Apps Script)</label>
+      <input id="syncUrl" type="url" inputmode="url" autocomplete="off" autocapitalize="none" placeholder="https://script.google.com/macros/s/…/exec">
+      <label for="syncToken">Senha</label>
+      <input id="syncToken" type="text" autocomplete="off" autocapitalize="none">
+      <button type="button" id="btnSync" class="primary big" style="margin-top:14px">Salvar e sincronizar</button>
+      <button type="button" id="syncOff" class="secondary" hidden>Desativar sincronização</button>
+      <p id="syncStatus" class="hint" style="margin-top:10px"></p>
+    </div>
+
+    <div class="card">
       <h2>Backup e compartilhamento</h2>
       <p class="hint">Os dados ficam salvos só neste aparelho. Para levar a lista de alunos para outro celular (ou guardar uma cópia), exporte e depois importe no outro aparelho.</p>
       <button type="button" id="exportar" class="secondary">Exportar dados</button>

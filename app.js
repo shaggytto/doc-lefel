@@ -29,11 +29,14 @@
     if (!d || !Array.isArray(d.students)) d = { students: [] };
     d.students.forEach(function (s) { s.unidadeId = fixUnit(s.unidadeId); });
     delete d.units;
+    if (!Array.isArray(d.tombs)) d.tombs = [];
+    if (!d.sync) d.sync = { url: '', token: '', last: 0 };
     return d;
   }
-  function save() {
+  function save(noSync) {
     try { localStorage.setItem(KEY, JSON.stringify(db)); }
     catch (e) { toast('Não foi possível gravar os dados neste navegador.'); }
+    if (!noSync) agendaSync();
   }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
   function clean(s) { return String(s || '').replace(/\s+/g, ' ').trim(); }
@@ -340,6 +343,8 @@
     var s = studentById(editingStudent); if (!s) return;
     if (!confirm('Excluir “' + s.nome + '” do cadastro?')) return;
     db.students = db.students.filter(function (x) { return x.id !== s.id; });
+    db.tombs = db.tombs.filter(function (t) { return t.id !== s.id; });
+    db.tombs.push({ id: s.id, updated: Date.now() });
     if (cur.studentId === s.id) { cur.studentId = null; updatePicker(); }
     save(); closeSheets(); renderAlunos(); toast('Aluno excluído.');
   }
@@ -384,6 +389,84 @@
     r.readAsText(file);
   }
 
+  /* ---------------- sincronização (Google Planilhas) ---------------- */
+  var syncing = false, syncPending = false, syncTimer = null;
+  function fmtData(ms) {
+    var d = new Date(ms), p = function (n) { return ('0' + n).slice(-2); };
+    return p(d.getDate()) + '/' + p(d.getMonth() + 1) + ' às ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+  function syncInfo(msg) {
+    var c = db.sync;
+    $('syncStatus').textContent = msg || (c.url
+      ? (c.last ? 'Última sincronização: ' + fmtData(c.last) + '.' : 'Ainda não sincronizado.')
+      : 'Sincronização desativada. Os dados ficam só neste aparelho.');
+    $('syncOff').hidden = !c.url;
+  }
+  function agendaSync() {
+    if (!db.sync || !db.sync.url) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(function () { syncAgora(false); }, 1500);
+  }
+  function mergeRemote(records) {
+    var changes = 0;
+    (records || []).forEach(function (r) {
+      var id = String(r.id || ''), upd = Number(r.updated) || 0;
+      if (!id) return;
+      var local = studentById(id);
+      var tomb = db.tombs.filter(function (t) { return t.id === id; })[0];
+      var localUpd = Math.max(local ? (local.updated || 0) : 0, tomb ? tomb.updated : 0);
+      if (upd <= localUpd) return;
+      if (r.deleted) {
+        db.students = db.students.filter(function (x) { return x.id !== id; });
+        db.tombs = db.tombs.filter(function (t) { return t.id !== id; });
+        db.tombs.push({ id: id, updated: upd });
+      } else {
+        db.tombs = db.tombs.filter(function (t) { return t.id !== id; });
+        if (!local) { local = { id: id }; db.students.push(local); }
+        local.nome = clean(r.nome); local.endereco = String(r.endereco || '');
+        local.unidadeId = fixUnit(String(r.unidadeId || ''));
+        local.periodo = PERIODOS[r.periodo] ? r.periodo : '';
+        local.updated = upd;
+      }
+      changes++;
+    });
+    return changes;
+  }
+  function refreshAll() {
+    if (cur.studentId && !studentById(cur.studentId)) cur.studentId = null;
+    updatePicker(); refreshUnitSelects();
+    if ($('view-alunos').classList.contains('active')) renderAlunos();
+  }
+  function syncAgora(manual) {
+    var cfg = db.sync;
+    if (!cfg.url || !cfg.token) { if (manual) toast('Preencha o endereço e a senha.'); return Promise.resolve(); }
+    if (syncing) { syncPending = true; return Promise.resolve(); }
+    syncing = true; syncInfo('Sincronizando…'); $('btnSync').disabled = true;
+    var records = db.students.map(function (s) {
+      return { id: s.id, nome: s.nome, endereco: s.endereco, unidadeId: s.unidadeId, periodo: s.periodo, updated: s.updated || 0, deleted: false };
+    }).concat(db.tombs.map(function (t) {
+      return { id: t.id, nome: '', endereco: '', unidadeId: '', periodo: '', updated: t.updated, deleted: true };
+    }));
+    return fetch(cfg.url, { method: 'POST', body: JSON.stringify({ token: cfg.token, records: records }), redirect: 'follow' })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res.ok) throw new Error(res.error === 'senha' ? 'Senha incorreta.' : (res.error || 'Erro na planilha.'));
+        var n = mergeRemote(res.records);
+        cfg.last = Date.now(); save(true); refreshAll(); syncInfo();
+        if (manual) toast('Sincronizado. ' + n + ' alteração(ões) recebida(s).');
+      })
+      .catch(function (e) {
+        var offline = !navigator.onLine || /fetch|network|load failed/i.test(String(e && e.message));
+        syncInfo(offline ? 'Sem conexão com a planilha. Os dados ficam salvos neste aparelho e sincronizam depois.'
+                         : 'Não sincronizou: ' + (e && e.message ? String(e.message).replace(/\.$/, '') : 'erro desconhecido') + '.');
+        if (manual) toast(offline ? 'Sem conexão com a planilha. Confira o endereço e a internet.' : String(e.message));
+      })
+      .then(function () {
+        syncing = false; $('btnSync').disabled = false;
+        if (syncPending) { syncPending = false; agendaSync(); }
+      });
+  }
+
   /* ---------------- eventos ---------------- */
   function init() {
     $('logo').src = 'data:image/jpeg;base64,' + FICHA_ASSETS.logo;
@@ -426,6 +509,22 @@
     $('importar').onclick = function () { $('arquivoImport').click(); };
     $('arquivoImport').onchange = function () { if (this.files[0]) importar(this.files[0]); this.value = ''; };
 
+    $('syncUrl').value = db.sync.url || ''; $('syncToken').value = db.sync.token || ''; syncInfo();
+    $('btnSync').onclick = function () {
+      var url = $('syncUrl').value.trim(), tk = $('syncToken').value.trim();
+      if (!/^https:\/\/script\.google\.com\//.test(url)) return toast('O endereço deve começar com https://script.google.com/');
+      if (!tk) return toast('Informe a senha.');
+      db.sync.url = url; db.sync.token = tk; save(true); syncAgora(true);
+    };
+    $('syncOff').onclick = function () {
+      if (!confirm('Desativar a sincronização neste aparelho? Os alunos continuam salvos aqui.')) return;
+      db.sync = { url: '', token: '', last: 0 }; save(true); $('syncUrl').value = ''; $('syncToken').value = ''; syncInfo();
+    };
+    window.addEventListener('online', function () { agendaSync(); });
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible' && db.sync.url && Date.now() - (db.sync.last || 0) > 30000) agendaSync();
+    });
+    if (db.sync.url) agendaSync();
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ignora */ }
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
       navigator.serviceWorker.register('sw.js').catch(function () { /* offline é opcional */ });
